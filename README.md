@@ -1,6 +1,6 @@
-# sublime-tab-organizer
+# Sublime Text Tab Organizer
 
-> Organize Sublime Text tabs from your shell — `list` · `merge` · `sort` · `dedupe` · `dump-untitled`.
+Organize Sublime Text tabs from your shell — `list` · `merge` · `sort` · `dedupe` · `dump-untitled`.
 
 [![license](https://img.shields.io/badge/license-MIT-3b82f6)](./LICENSE)
 [![python](https://img.shields.io/badge/python-3.8%2B-3776ab?logo=python&logoColor=white)](#)
@@ -9,15 +9,18 @@
 [![version](https://img.shields.io/badge/version-0.1.0-6fbf8a)](#)
 [![landing](https://img.shields.io/badge/site-gindachen.github.io-6c8bef)](https://gindachen.github.io/sublime-tab-organizer/)
 
----
 
-## install
+
+## Quick Start
 
 ```bash
 git clone https://github.com/GindaChen/sublime-tab-organizer.git
 cd sublime-tab-organizer && ./install.sh
-# restart Sublime Text once, then:
+
+# Restart Sublime Text once, then:
 sto ping
+# Show all tabs
+sto list
 ```
 
 ## commands
