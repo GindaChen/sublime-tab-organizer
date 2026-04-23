@@ -1,0 +1,463 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>sublime-tab-organizer — organize Sublime Text tabs from your shell</title>
+<meta name="description" content="A tiny CLI + companion plugin that lets you list, merge, sort, dedupe, and persist Sublime Text tabs from the terminal.">
+<style>
+:root {
+  --bg: #0d0f13;
+  --bg-raised: #14171d;
+  --bg-sunken: #0a0c10;
+  --panel: #11141a;
+  --line: #1e2230;
+  --line-soft: #181c25;
+  --text: #d6dbe6;
+  --text-dim: #8993a7;
+  --text-faint: #5c6578;
+  --accent: rgb(108 139 239);
+  --accent-soft: rgba(108, 139, 239, 0.12);
+  --accent-line: rgba(108, 139, 239, 0.35);
+  --warn: #d4a35a;
+  --ok: #6fbf8a;
+  --bad: #d47878;
+  --radius: 10px;
+  --radius-sm: 6px;
+  --t: 120ms;
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, sans-serif;
+  --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 14px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+.mono { font-family: var(--mono); }
+
+.topbar {
+  position: sticky; top: 0; z-index: 20;
+  background: color-mix(in srgb, var(--bg) 85%, transparent);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--line);
+  padding: 10px 20px;
+  display: flex; align-items: center; gap: 14px;
+  font-size: 12.5px;
+}
+.brand { display: flex; align-items: center; gap: 8px; }
+.dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--ok); box-shadow: 0 0 10px var(--ok);
+  display: inline-block;
+}
+.brand .name { font-family: var(--mono); color: var(--text); }
+.topbar nav { margin-left: auto; display: flex; gap: 16px; }
+.topbar nav a { color: var(--text-dim); }
+.topbar nav a:hover { color: var(--text); text-decoration: none; }
+
+.wrap { max-width: 1080px; margin: 0 auto; padding: 0 20px; }
+
+/* hero */
+.hero { padding: 72px 0 40px; border-bottom: 1px solid var(--line-soft); }
+.hero h1 {
+  font-family: var(--mono);
+  font-weight: 500;
+  font-size: 34px;
+  line-height: 1.2;
+  margin: 0 0 14px;
+  color: var(--text);
+}
+.hero h1 .slash { color: var(--text-faint); }
+.hero .tag {
+  font-size: 17px;
+  color: var(--text-dim);
+  max-width: 640px;
+  margin: 0 0 28px;
+}
+.hero .tag em { color: var(--text); font-style: normal; }
+
+.cta-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: stretch; }
+
+.code-card {
+  background: var(--bg-sunken);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  color: var(--text);
+  display: flex; align-items: center; gap: 10px;
+  min-width: 0;
+}
+.code-card .prompt { color: var(--text-faint); user-select: none; }
+.code-card code { white-space: pre; overflow-x: auto; }
+.code-card button.copy {
+  margin-left: auto;
+  background: transparent; color: var(--text-dim);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 4px 10px;
+  font-family: var(--mono); font-size: 11px;
+  cursor: pointer;
+  transition: color var(--t), border-color var(--t), background var(--t);
+}
+.code-card button.copy:hover { color: var(--text); border-color: var(--accent-line); background: var(--accent-soft); }
+.code-card button.copy.done { color: var(--ok); border-color: var(--ok); }
+
+.btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  border: 1px solid var(--accent-line);
+  border-radius: var(--radius);
+  padding: 10px 16px;
+  font-family: var(--font); font-size: 13px;
+  cursor: pointer; text-decoration: none;
+  transition: background var(--t), color var(--t);
+}
+.btn:hover { background: rgba(108, 139, 239, 0.2); text-decoration: none; }
+.btn.ghost { background: transparent; color: var(--text-dim); border-color: var(--line); }
+.btn.ghost:hover { color: var(--text); }
+
+/* section base */
+section { padding: 56px 0; border-bottom: 1px solid var(--line-soft); }
+section:last-of-type { border-bottom: none; }
+section > .wrap > h2 {
+  font-family: var(--mono);
+  font-weight: 500;
+  font-size: 13px;
+  color: var(--accent);
+  margin: 0 0 6px;
+}
+section > .wrap > h2::before { content: "# "; color: var(--text-faint); }
+section > .wrap > .lede {
+  font-size: 20px;
+  color: var(--text);
+  margin: 0 0 28px;
+  max-width: 720px;
+}
+
+/* features grid */
+.features {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+}
+.feature {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 18px;
+}
+.feature h3 {
+  font-family: var(--mono);
+  font-weight: 500;
+  font-size: 13.5px;
+  margin: 0 0 6px;
+  color: var(--text);
+}
+.feature h3 .kbd { color: var(--accent); }
+.feature p { margin: 0 0 10px; color: var(--text-dim); font-size: 13px; }
+.feature pre {
+  margin: 0;
+  background: var(--bg-sunken);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--text);
+  overflow-x: auto;
+}
+
+/* terminal demo */
+.term {
+  background: var(--bg-sunken);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.term .title {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 12px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--text-dim);
+}
+.term .title .lights { display: flex; gap: 5px; }
+.term .title .lights span {
+  width: 10px; height: 10px; border-radius: 50%;
+  background: var(--line);
+}
+.term .title .lights span:nth-child(1) { background: #d47878; }
+.term .title .lights span:nth-child(2) { background: #d4a35a; }
+.term .title .lights span:nth-child(3) { background: #6fbf8a; }
+.term pre {
+  margin: 0;
+  padding: 16px 18px;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  color: var(--text);
+  overflow-x: auto;
+}
+.term .p { color: var(--text-faint); }
+.term .c { color: var(--accent); }
+.term .o { color: var(--text-dim); }
+.term .ok { color: var(--ok); }
+.term .warn { color: var(--warn); }
+.term .dim { color: var(--text-faint); }
+
+/* arch diagram */
+.arch {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 20px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text-dim);
+  white-space: pre;
+  overflow-x: auto;
+  line-height: 1.5;
+}
+
+/* callout */
+.callout {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--warn);
+  border-radius: var(--radius);
+  padding: 14px 18px;
+  color: var(--text-dim);
+  font-size: 13px;
+  margin: 10px 0 0;
+}
+.callout strong { color: var(--text); font-weight: 500; }
+
+.footer {
+  padding: 28px 0 48px;
+  color: var(--text-faint);
+  font-size: 12px;
+  display: flex; justify-content: space-between; flex-wrap: wrap; gap: 10px;
+  font-family: var(--mono);
+}
+.footer a { color: var(--text-dim); }
+
+@media (max-width: 820px) {
+  .features { grid-template-columns: 1fr; }
+  .hero h1 { font-size: 26px; }
+  .hero .tag { font-size: 15px; }
+  .topbar nav { gap: 10px; }
+}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <span class="brand">
+    <span class="dot"></span>
+    <span class="name">sublime-tab-organizer</span>
+  </span>
+  <nav>
+    <a href="#features">features</a>
+    <a href="#install">install</a>
+    <a href="#demo">demo</a>
+    <a href="https://github.com/GindaChen/sublime-tab-organizer">github →</a>
+  </nav>
+</div>
+
+<section class="hero">
+  <div class="wrap">
+    <h1><span class="slash">~/</span>sublime-tab-organizer</h1>
+    <p class="tag">
+      A tiny CLI + companion plugin that lets you
+      <em>list</em>, <em>merge</em>, <em>sort</em>, <em>dedupe</em>, and <em>persist</em>
+      Sublime Text tabs from the terminal. Stop dragging tabs between windows — script it.
+    </p>
+    <div class="cta-row">
+      <div class="code-card">
+        <span class="prompt">$</span>
+        <code id="install-cmd">git clone https://github.com/GindaChen/sublime-tab-organizer &amp;&amp; cd sublime-tab-organizer &amp;&amp; ./install.sh</code>
+        <button class="copy" data-copy="install-cmd">copy</button>
+      </div>
+      <a class="btn" href="https://github.com/GindaChen/sublime-tab-organizer">view on github</a>
+      <a class="btn ghost" href="#demo">see it run</a>
+    </div>
+  </div>
+</section>
+
+<section id="features">
+  <div class="wrap">
+    <h2>features</h2>
+    <p class="lede">Each command is one subcommand of <code class="mono">sto</code>. Run <code class="mono">sto &lt;cmd&gt; --help</code> for per-command examples.</p>
+
+    <div class="features">
+      <div class="feature">
+        <h3><span class="kbd">sto list</span></h3>
+        <p>Every window and every tab with view IDs. <code class="mono">●</code> marks unsaved buffers.</p>
+        <pre>* window 3  (12 tabs)
+    ● 14522  src/main.py
+      14523  [untitled]</pre>
+      </div>
+
+      <div class="feature">
+        <h3><span class="kbd">sto merge</span></h3>
+        <p>Pulls tabs from every window into one. <code class="mono">--copy-unsaved</code> migrates dirty/untitled buffers too.</p>
+        <pre>sto merge --copy-unsaved
+merged 27 tabs into window 3
+copied (untitled) [scratch]</pre>
+      </div>
+
+      <div class="feature">
+        <h3><span class="kbd">sto dump-untitled</span></h3>
+        <p>Persist untitled buffers to real files. Timestamp + slug naming. Content-hash dedup means reruns don't pile up copies.</p>
+        <pre>~/sublime-scratch/
+  20260423_091204_todo-refactor-auth.py
+  20260423_091204_meeting-notes.md</pre>
+      </div>
+
+      <div class="feature">
+        <h3><span class="kbd">sto sort</span></h3>
+        <p>Re-order tabs in the active group by <code class="mono">name</code>, <code class="mono">path</code>, or <code class="mono">ext</code>.</p>
+        <pre>sto sort --by path</pre>
+      </div>
+
+      <div class="feature">
+        <h3><span class="kbd">sto dedupe</span></h3>
+        <p>If the same file is open in multiple tabs, keeps the first and closes the rest.</p>
+        <pre>sto dedupe
+removed duplicate src/util.py
+1 duplicates removed</pre>
+      </div>
+
+      <div class="feature">
+        <h3><span class="kbd">sto close</span></h3>
+        <p>Close by view id, glob pattern, or "every clean tab."</p>
+        <pre>sto close --pattern '*.log'
+sto close --saved</pre>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="install">
+  <div class="wrap">
+    <h2>install</h2>
+    <p class="lede">Clone, run one script, restart Sublime. macOS paths are the default; Linux/Windows set <code class="mono">STO_PLUGIN_DIR</code>.</p>
+    <div class="code-card" style="max-width: 820px">
+      <span class="prompt">$</span>
+      <code id="install-cmd-2">git clone https://github.com/GindaChen/sublime-tab-organizer.git
+cd sublime-tab-organizer
+./install.sh</code>
+      <button class="copy" data-copy="install-cmd-2">copy</button>
+    </div>
+    <p class="callout">
+      <strong>After install:</strong> restart Sublime Text once so the plugin loads, then run
+      <code class="mono">sto ping</code> — expect <code class="mono">{"pong": true, "version": "0.1.0"}</code>.
+    </p>
+  </div>
+</section>
+
+<section id="demo">
+  <div class="wrap">
+    <h2>a minute of tabs</h2>
+    <p class="lede">Typical flow: see what's open, dump scratch buffers, merge, sort.</p>
+    <div class="term">
+      <div class="title">
+        <span class="lights"><span></span><span></span><span></span></span>
+        <span>zsh — sublime-tab-organizer</span>
+      </div>
+<pre><span class="p">$</span> <span class="c">sto list</span>
+<span class="ok">*</span> window 3  (8 tabs)
+        14521  /Users/you/proj/src/main.py
+      ● 14522  /Users/you/proj/tests/test_main.py
+        14523  <span class="dim">[untitled]</span>
+        14524  <span class="dim">[TODO refactor]</span>
+  window 5  (4 tabs)
+        14600  /Users/you/notes/meeting.md
+
+<span class="p">$</span> <span class="c">sto dump-untitled --close-source --open-saved</span>
+<span class="ok">saved  </span> /Users/you/sublime-scratch/20260423_091204_untitled.txt
+<span class="ok">saved  </span> /Users/you/sublime-scratch/20260423_091204_todo-refactor.md
+dir: /Users/you/sublime-scratch
+<span class="o">2 new, 0 reused (content-dedup)</span>
+
+<span class="p">$</span> <span class="c">sto merge</span>
+merged 4 tabs into window 3
+
+<span class="p">$</span> <span class="c">sto sort --by path</span>
+sorted 12 tabs by path
+
+<span class="p">$</span> <span class="c">sto dedupe</span>
+removed duplicate /Users/you/proj/src/main.py
+<span class="o">1 duplicates removed</span></pre>
+    </div>
+  </div>
+</section>
+
+<section id="architecture">
+  <div class="wrap">
+    <h2>architecture</h2>
+    <p class="lede">ST's plugin API only runs inside the ST process. The CLI talks to a companion plugin over a local TCP socket; the plugin dispatches commands on ST's main thread.</p>
+    <pre class="arch">  your shell                      Sublime Text
+  ┌──────────┐   TCP 9998    ┌──────────────────────┐
+  │   sto    │ ────────────→ │  SublimeTabOrganizer │
+  │   CLI    │ ←──────────── │   (plugin, python)   │
+  └──────────┘    JSON/L     └──────────────────────┘
+</pre>
+    <p class="callout">
+      <strong>No cross-window move API.</strong> Confirmed against the official Sublime API reference: <code class="mono">set_view_index</code>, <code class="mono">set_sheet_index</code>, <code class="mono">move_sheets_to_group</code> are all group-scoped within a single window. <code class="mono">merge</code> re-opens files by path for saved tabs; <code class="mono">--copy-unsaved</code> re-materializes the buffer in a new view (text + syntax survive; undo history does not).
+    </p>
+  </div>
+</section>
+
+<section id="caveats">
+  <div class="wrap">
+    <h2>caveats</h2>
+    <ul style="padding-left: 20px; color: var(--text-dim); font-size: 13.5px; line-height: 1.7;">
+      <li>macOS paths assumed in <code class="mono">install.sh</code>. Override with <code class="mono">STO_PLUGIN_DIR</code> on Linux/Windows.</li>
+      <li><code class="mono">sto close</code> on a dirty tab triggers ST's native save-prompt dialog. Use <code class="mono">--saved</code> to skip.</li>
+      <li>TCP server binds to <code class="mono">127.0.0.1</code> only — no auth. Any local process can reach it. Fine for personal use; avoid on shared machines.</li>
+      <li><code class="mono">--copy-unsaved</code> loses undo history and view-local state (folds, bookmarks). Text and syntax are preserved.</li>
+    </ul>
+  </div>
+</section>
+
+<div class="wrap footer">
+  <span>mit license · v0.1.0</span>
+  <span><a href="https://github.com/GindaChen/sublime-tab-organizer">source</a> · <a href="https://github.com/GindaChen/sublime-tab-organizer/issues">issues</a></span>
+</div>
+
+<script>
+  document.querySelectorAll('button.copy').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const id = btn.getAttribute('data-copy');
+      const el = document.getElementById(id);
+      if (!el) return;
+      try {
+        await navigator.clipboard.writeText(el.innerText);
+        const old = btn.textContent;
+        btn.textContent = 'copied';
+        btn.classList.add('done');
+        setTimeout(() => { btn.textContent = old; btn.classList.remove('done'); }, 1100);
+      } catch (e) {
+        btn.textContent = 'err';
+      }
+    });
+  });
+</script>
+
+</body>
+</html>

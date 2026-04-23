@@ -1,0 +1,325 @@
+#!/usr/bin/env python3
+"""sto — Sublime Tab Organizer CLI.
+
+Talks to the companion plugin over 127.0.0.1:9998.
+"""
+
+import argparse
+import json
+import os
+import socket
+import sys
+
+VERSION = "0.1.0"
+REPO_URL = "https://github.com/GindaChen/sublime-tab-organizer"
+
+HOST = os.environ.get("STO_HOST", "127.0.0.1")
+PORT = int(os.environ.get("STO_PORT", "9998"))
+
+MAIN_EPILOG = """\
+examples:
+  sto list                          # show all windows + tabs with IDs
+  sto merge                         # merge every window's saved tabs into the active one
+  sto merge --copy-unsaved          # also migrate dirty/untitled tabs (copies text)
+  sto dump-untitled --close-source  # save untitled tabs to ~/sublime-scratch/ and close them
+  sto sort --by path                # sort active window's tabs by full path
+  sto dedupe                        # close duplicate file tabs across all windows
+  sto close 12345 67890             # close tabs by view id
+  sto close --pattern '*.log'       # close all .log tabs
+  sto close --saved                 # close every clean (non-dirty) tab
+
+env:
+  STO_HOST          plugin host (default: 127.0.0.1)
+  STO_PORT          plugin port (default: 9998)
+  STO_SCRATCH_DIR   default folder for `dump-untitled` (default: ~/sublime-scratch)
+
+source:  {repo}
+""".format(repo=REPO_URL)
+
+
+def _formatter():
+    return argparse.RawDescriptionHelpFormatter
+
+
+def call(cmd, **args):
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.settimeout(15)
+    try:
+        s.connect((HOST, PORT))
+    except (ConnectionRefusedError, socket.timeout, OSError) as e:
+        sys.stderr.write(
+            "error: cannot reach Sublime Tab Organizer plugin at %s:%d (%s).\n"
+            "  Is Sublime Text running with the plugin installed?\n" % (HOST, PORT, e)
+        )
+        sys.exit(2)
+    payload = json.dumps({"cmd": cmd, "args": args}) + "\n"
+    s.sendall(payload.encode("utf-8"))
+    buf = b""
+    while b"\n" not in buf:
+        chunk = s.recv(65536)
+        if not chunk:
+            break
+        buf += chunk
+    s.close()
+    if not buf:
+        sys.stderr.write("error: empty response from plugin\n")
+        sys.exit(1)
+    resp = json.loads(buf.decode("utf-8").strip())
+    if "error" in resp and "result" not in resp:
+        sys.stderr.write("error: %s\n" % resp["error"])
+        sys.exit(1)
+    return resp.get("result", resp)
+
+
+def _fmt_file(v):
+    return v.get("file") or ("[%s]" % v.get("name", "untitled"))
+
+
+def cmd_list(args):
+    r = call("list")
+    if args.json:
+        print(json.dumps(r, indent=2))
+        return
+    for w in r["windows"]:
+        star = "*" if w.get("active") else " "
+        print("%s window %s  (%d tabs)" % (star, w["window_id"], len(w["views"])))
+        for v in w["views"]:
+            dirty = "●" if v["dirty"] else " "
+            print("    %s %6d  %s" % (dirty, v["id"], _fmt_file(v)))
+
+
+def cmd_close(args):
+    kwargs = {}
+    if args.ids:
+        kwargs["ids"] = [int(x) for x in args.ids]
+    if args.pattern:
+        kwargs["pattern"] = args.pattern
+    if args.saved:
+        kwargs["only_saved"] = True
+    if not kwargs:
+        sys.stderr.write("error: provide ids, --pattern, or --saved\n")
+        sys.exit(1)
+    r = call("close", **kwargs)
+    for v in r.get("closed", []):
+        print("closed", _fmt_file(v))
+    print("%d tabs closed" % len(r.get("closed", [])))
+
+
+def cmd_merge(args):
+    kwargs = {}
+    if args.into is not None:
+        kwargs["target_window_id"] = args.into
+    if args.copy_unsaved:
+        kwargs["copy_unsaved"] = True
+    r = call("merge", **kwargs)
+    print("merged %d tabs into window %s" % (len(r.get("moved", [])), r.get("target_window_id")))
+    for c in r.get("copied", []):
+        label = c.get("file") or ("[%s]" % (c.get("name") or "untitled"))
+        tag = "untitled" if c.get("was_untitled") else "dirty"
+        print("copied (%s)" % tag, label)
+    for sk in r.get("skipped", []):
+        print("skipped:", sk.get("file") or "(untitled)", "-", sk.get("reason"))
+
+
+def cmd_sort(args):
+    r = call("sort", by=args.by)
+    print("sorted %d tabs by %s" % (len(r.get("sorted", [])), r.get("by")))
+
+
+def cmd_dedupe(args):
+    r = call("dedupe")
+    for f in r.get("removed", []):
+        print("removed duplicate", f)
+    print("%d duplicates removed" % len(r.get("removed", [])))
+
+
+def cmd_group(args):
+    r = call("group-by-folder")
+    grouped = r.get("grouped", {})
+    for folder, files in grouped.items():
+        print("%s -> %d tabs" % (folder, len(files)))
+
+
+def cmd_dump_untitled(args):
+    kwargs = {"dir": os.path.expanduser(args.dir)}
+    if args.close_source:
+        kwargs["close_source"] = True
+    if args.open_saved:
+        kwargs["open_saved"] = True
+    if args.include_dirty:
+        kwargs["include_dirty"] = True
+    r = call("dump-untitled", **kwargs)
+    new = 0
+    reused = 0
+    for d in r.get("dumped", []):
+        tag = "reused " if d.get("reused_existing") else "saved  "
+        print("%s %s" % (tag, d["path"]))
+        if d.get("reused_existing"):
+            reused += 1
+        else:
+            new += 1
+    for sk in r.get("skipped", []):
+        print("skipped view %s - %s" % (sk.get("view_id"), sk.get("reason")))
+    print("dir: %s" % r.get("dir"))
+    print("%d new, %d reused (content-dedup)" % (new, reused))
+
+
+def cmd_ping(args):
+    r = call("ping")
+    print(json.dumps(r))
+
+
+def main():
+    p = argparse.ArgumentParser(
+        prog="sto",
+        description="Sublime Tab Organizer — list, merge, sort, dedupe, and dump Sublime Text tabs from your shell.",
+        epilog=MAIN_EPILOG,
+        formatter_class=_formatter(),
+    )
+    p.add_argument("--version", action="version", version="sto %s (%s)" % (VERSION, REPO_URL))
+    sub = p.add_subparsers(dest="cmd", required=True, metavar="<command>")
+
+    # list ------------------------------------------------------------
+    lp = sub.add_parser(
+        "list",
+        help="list all windows and tabs",
+        description="Print every Sublime window and its tabs with view IDs. Use the IDs with `sto close`.",
+        epilog="examples:\n  sto list\n  sto list --json | jq '.windows[].views[].file'",
+        formatter_class=_formatter(),
+    )
+    lp.add_argument("--json", action="store_true", help="raw JSON output (pipe into jq)")
+    lp.set_defaults(func=cmd_list)
+
+    # close -----------------------------------------------------------
+    cp = sub.add_parser(
+        "close",
+        help="close tabs by id, glob pattern, or saved state",
+        description="Close tabs. At least one of: view ids, --pattern, --saved. Dirty tabs trigger ST's save prompt.",
+        epilog=(
+            "examples:\n"
+            "  sto close 12345              # close a single tab by id\n"
+            "  sto close 12345 67890        # close several\n"
+            "  sto close --pattern '*.log'  # close any tab whose path matches\n"
+            "  sto close --pattern '*/node_modules/*'\n"
+            "  sto close --saved            # close every clean tab (keeps dirty ones)"
+        ),
+        formatter_class=_formatter(),
+    )
+    cp.add_argument("ids", nargs="*", help="view ids to close (from `sto list`)")
+    cp.add_argument("--pattern", help="fnmatch glob against the tab's file path")
+    cp.add_argument("--saved", action="store_true", help="close all saved (non-dirty) tabs")
+    cp.set_defaults(func=cmd_close)
+
+    # merge -----------------------------------------------------------
+    mp = sub.add_parser(
+        "merge",
+        help="merge all windows into the active (or --into) window",
+        description=(
+            "Pulls saved tabs from every other window into the target window, then closes empty source windows.\n"
+            "Saved tabs are re-opened by path (lossless). Dirty/untitled tabs are skipped unless --copy-unsaved.\n"
+            "Note: ST has no cross-window move API, so --copy-unsaved re-materializes the buffer in a new view —\n"
+            "text and syntax survive; undo history and view-local state (folds, bookmarks) do not."
+        ),
+        epilog=(
+            "examples:\n"
+            "  sto merge                      # merge into currently active window\n"
+            "  sto merge --into 3             # merge into window id 3 (see `sto list`)\n"
+            "  sto merge --copy-unsaved       # also migrate dirty/untitled buffers"
+        ),
+        formatter_class=_formatter(),
+    )
+    mp.add_argument("--into", type=int, help="target window id; defaults to active window")
+    mp.add_argument(
+        "--copy-unsaved",
+        dest="copy_unsaved",
+        action="store_true",
+        help="also migrate dirty/untitled tabs by copying text into new views",
+    )
+    mp.set_defaults(func=cmd_merge)
+
+    # sort ------------------------------------------------------------
+    sp = sub.add_parser(
+        "sort",
+        help="sort tabs in the active window's current group",
+        description="Re-orders tabs within the active group. Does not move tabs between groups or windows.",
+        epilog=(
+            "examples:\n"
+            "  sto sort               # sort by filename (default)\n"
+            "  sto sort --by path     # sort by full path (groups directories together)\n"
+            "  sto sort --by ext      # sort by extension, then path"
+        ),
+        formatter_class=_formatter(),
+    )
+    sp.add_argument("--by", choices=["name", "path", "ext"], default="name")
+    sp.set_defaults(func=cmd_sort)
+
+    # dedupe ----------------------------------------------------------
+    ddp = sub.add_parser(
+        "dedupe",
+        help="close duplicate file tabs across all windows",
+        description="If the same file is open in multiple tabs, keeps the first one seen and closes the rest.",
+        epilog="examples:\n  sto dedupe",
+        formatter_class=_formatter(),
+    )
+    ddp.set_defaults(func=cmd_dedupe)
+
+    # group-by-folder -------------------------------------------------
+    gp = sub.add_parser(
+        "group-by-folder",
+        help="split tabs into new windows by project folder",
+        description="Keeps tabs under the first project folder in the active window; moves tabs under each other project folder into their own new window.",
+        epilog="examples:\n  sto group-by-folder",
+        formatter_class=_formatter(),
+    )
+    gp.set_defaults(func=cmd_group)
+
+    # dump-untitled ---------------------------------------------------
+    dp = sub.add_parser(
+        "dump-untitled",
+        help="save untitled (and optionally dirty) tabs to a folder as real files",
+        description=(
+            "Persist untitled buffers to disk. Filename format is `YYYYMMDD_HHMMSS_<slug>.<ext>` where:\n"
+            "  - timestamp is the dump invocation time\n"
+            "  - slug is the first non-blank line, cleaned + kebab-cased, max 40 chars\n"
+            "  - ext is inferred from the view's syntax (.py, .md, .sh, ... fallback .txt)\n\n"
+            "Content dedup: before writing, every file in the destination is hashed; if a buffer's\n"
+            "sha256 matches an existing file, the write is skipped and that path is reused.\n"
+            "So running this repeatedly does not pile up identical files."
+        ),
+        epilog=(
+            "examples:\n"
+            "  sto dump-untitled                              # dump to ~/sublime-scratch/\n"
+            "  sto dump-untitled --dir ~/notes/scratch        # custom folder\n"
+            "  sto dump-untitled --close-source               # also close the untitled tabs\n"
+            "  sto dump-untitled --close-source --open-saved  # save, then reopen as file-backed tabs\n"
+            "  sto dump-untitled --include-dirty              # also dump dirty-with-path buffers\n"
+            "  STO_SCRATCH_DIR=~/notes/scratch sto dump-untitled  # set default via env"
+        ),
+        formatter_class=_formatter(),
+    )
+    dp.add_argument(
+        "--dir",
+        default=os.environ.get("STO_SCRATCH_DIR", "~/sublime-scratch"),
+        help="destination folder (default: $STO_SCRATCH_DIR or ~/sublime-scratch)",
+    )
+    dp.add_argument("--close-source", action="store_true", help="close the untitled tab after saving")
+    dp.add_argument("--open-saved", action="store_true", help="open the saved file as a new tab")
+    dp.add_argument("--include-dirty", action="store_true", help="also dump dirty tabs that already have a file path")
+    dp.set_defaults(func=cmd_dump_untitled)
+
+    # ping ------------------------------------------------------------
+    pp = sub.add_parser(
+        "ping",
+        help="health check — confirm the plugin is running",
+        description="Returns a JSON blob with plugin version and window count. Exit 2 if the plugin is unreachable.",
+        epilog="examples:\n  sto ping",
+        formatter_class=_formatter(),
+    )
+    pp.set_defaults(func=cmd_ping)
+
+    args = p.parse_args()
+    args.func(args)
+
+
+if __name__ == "__main__":
+    main()
