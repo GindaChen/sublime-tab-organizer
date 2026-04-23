@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>sublime-tab-organizer — organize Sublime Text tabs from your shell</title>
-<meta name="description" content="A tiny CLI + companion plugin that lets you list, merge, sort, dedupe, and persist Sublime Text tabs from the terminal.">
+<meta name="description" content="Stop dragging tabs between Sublime Text windows. Clean your Sublime using the CLI — list, merge, sort, dedupe, dump-untitled.">
 <style>
 :root {
   --bg: #0d0f13;
@@ -147,38 +147,57 @@ section > .wrap > .lede {
   max-width: 720px;
 }
 
-/* features grid */
-.features {
+/* commands grid */
+.commands {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: 14px;
 }
-.feature {
+.cmd {
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  padding: 18px;
+  padding: 16px 18px;
+  display: flex; flex-direction: column; gap: 10px;
 }
-.feature h3 {
+.cmd-head {
+  display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+}
+.cmd-name {
   font-family: var(--mono);
   font-weight: 500;
-  font-size: 13.5px;
-  margin: 0 0 6px;
-  color: var(--text);
+  font-size: 14px;
+  color: var(--accent);
 }
-.feature h3 .kbd { color: var(--accent); }
-.feature p { margin: 0 0 10px; color: var(--text-dim); font-size: 13px; }
-.feature pre {
+.cmd-flags {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--text-faint);
+}
+.cmd-desc {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.cmd pre {
   margin: 0;
   background: var(--bg-sunken);
   border: 1px solid var(--line-soft);
   border-radius: var(--radius-sm);
-  padding: 8px 10px;
+  padding: 10px 12px;
   font-family: var(--mono);
   font-size: 11.5px;
   color: var(--text);
   overflow-x: auto;
+  line-height: 1.55;
 }
+.cmd pre .p { color: var(--text-faint); }
+.cmd pre .c { color: var(--accent); }
+.cmd pre .o { color: var(--text-dim); }
+.cmd pre .ok { color: var(--ok); }
+.cmd pre .dim { color: var(--text-faint); }
+.cmd pre .warn { color: var(--warn); }
 
 /* terminal demo */
 .term {
@@ -256,7 +275,7 @@ section > .wrap > .lede {
 .footer a { color: var(--text-dim); }
 
 @media (max-width: 820px) {
-  .features { grid-template-columns: 1fr; }
+  .commands { grid-template-columns: 1fr; }
   .hero h1 { font-size: 26px; }
   .hero .tag { font-size: 15px; }
   .topbar nav { gap: 10px; }
@@ -271,9 +290,9 @@ section > .wrap > .lede {
     <span class="name">sublime-tab-organizer</span>
   </span>
   <nav>
-    <a href="#features">features</a>
+    <a href="#commands">commands</a>
     <a href="#install">install</a>
-    <a href="#demo">demo</a>
+    <a href="#architecture">how it works</a>
     <a href="https://github.com/GindaChen/sublime-tab-organizer">github →</a>
   </nav>
 </div>
@@ -282,9 +301,7 @@ section > .wrap > .lede {
   <div class="wrap">
     <h1><span class="slash">~/</span>sublime-tab-organizer</h1>
     <p class="tag">
-      A tiny CLI + companion plugin that lets you
-      <em>list</em>, <em>merge</em>, <em>sort</em>, <em>dedupe</em>, and <em>persist</em>
-      Sublime Text tabs from the terminal. Stop dragging tabs between windows — script it.
+      <em>Stop dragging tabs between Sublime Text windows.</em> Clean your Sublime using cli.
     </p>
     <div class="cta-row">
       <div class="code-card">
@@ -292,62 +309,113 @@ section > .wrap > .lede {
         <code id="install-cmd">git clone https://github.com/GindaChen/sublime-tab-organizer &amp;&amp; cd sublime-tab-organizer &amp;&amp; ./install.sh</code>
         <button class="copy" data-copy="install-cmd">copy</button>
       </div>
-      <a class="btn" href="https://github.com/GindaChen/sublime-tab-organizer">view on github</a>
-      <a class="btn ghost" href="#demo">see it run</a>
+      <a class="btn" href="#commands">see the commands</a>
+      <a class="btn ghost" href="https://github.com/GindaChen/sublime-tab-organizer">github</a>
     </div>
   </div>
 </section>
 
-<section id="features">
+<section id="commands">
   <div class="wrap">
-    <h2>features</h2>
-    <p class="lede">Each command is one subcommand of <code class="mono">sto</code>. Run <code class="mono">sto &lt;cmd&gt; --help</code> for per-command examples.</p>
+    <h2>commands</h2>
+    <p class="lede">Each subcommand of <code class="mono">sto</code>. Shown with a real invocation and output. Run <code class="mono">sto &lt;cmd&gt; --help</code> for full flags.</p>
 
-    <div class="features">
-      <div class="feature">
-        <h3><span class="kbd">sto list</span></h3>
-        <p>Every window and every tab with view IDs. <code class="mono">●</code> marks unsaved buffers.</p>
-        <pre>* window 3  (12 tabs)
-    ● 14522  src/main.py
-      14523  [untitled]</pre>
+    <div class="commands">
+
+      <div class="cmd">
+        <div class="cmd-head">
+          <span class="cmd-name">sto list</span>
+          <span class="cmd-flags">[--json]</span>
+        </div>
+        <p class="cmd-desc">Every window and every tab with view IDs. <code class="mono">*</code> marks the active window, <code class="mono">●</code> marks unsaved buffers. Pipe <code class="mono">--json</code> into jq for scripting.</p>
+<pre><span class="p">$</span> <span class="c">sto list</span>
+<span class="ok">*</span> window 3  (8 tabs)
+        14521  /Users/you/proj/src/main.py
+      ● 14522  /Users/you/proj/tests/test_main.py
+        14523  <span class="dim">[untitled]</span>
+  window 5  (4 tabs)
+        14600  /Users/you/notes/meeting.md</pre>
       </div>
 
-      <div class="feature">
-        <h3><span class="kbd">sto merge</span></h3>
-        <p>Pulls tabs from every window into one. <code class="mono">--copy-unsaved</code> migrates dirty/untitled buffers too.</p>
-        <pre>sto merge --copy-unsaved
+      <div class="cmd">
+        <div class="cmd-head">
+          <span class="cmd-name">sto merge</span>
+          <span class="cmd-flags">[--into N] [--copy-unsaved]</span>
+        </div>
+        <p class="cmd-desc">Pulls saved tabs from every window into the active (or <code class="mono">--into</code>) window, then closes the emptied source windows. <code class="mono">--copy-unsaved</code> migrates dirty/untitled buffers too.</p>
+<pre><span class="p">$</span> <span class="c">sto merge --copy-unsaved</span>
 merged 27 tabs into window 3
-copied (untitled) [scratch]</pre>
+copied (untitled) <span class="dim">[scratch]</span>
+copied (dirty) /Users/you/proj/TODO.md</pre>
       </div>
 
-      <div class="feature">
-        <h3><span class="kbd">sto dump-untitled</span></h3>
-        <p>Persist untitled buffers to real files. Timestamp + slug naming. Content-hash dedup means reruns don't pile up copies.</p>
-        <pre>~/sublime-scratch/
-  20260423_091204_todo-refactor-auth.py
-  20260423_091204_meeting-notes.md</pre>
+      <div class="cmd">
+        <div class="cmd-head">
+          <span class="cmd-name">sto dump-untitled</span>
+          <span class="cmd-flags">[--dir] [--close-source] [--open-saved] [--include-dirty]</span>
+        </div>
+        <p class="cmd-desc">Persist untitled buffers to disk with <code class="mono">YYYYMMDD_HHMMSS_&lt;slug&gt;.&lt;ext&gt;</code> naming. Slug = first non-blank line. Ext inferred from syntax. Content-sha256 dedup means reruns don't pile up copies.</p>
+<pre><span class="p">$</span> <span class="c">sto dump-untitled --close-source --open-saved</span>
+<span class="ok">saved  </span> ~/sublime-scratch/20260423_091204_todo-refactor.md
+<span class="ok">saved  </span> ~/sublime-scratch/20260423_091204_meeting-notes.md
+<span class="dim">reused </span> ~/sublime-scratch/20260422_145312_untitled.txt
+<span class="o">2 new, 1 reused (content-dedup)</span></pre>
       </div>
 
-      <div class="feature">
-        <h3><span class="kbd">sto sort</span></h3>
-        <p>Re-order tabs in the active group by <code class="mono">name</code>, <code class="mono">path</code>, or <code class="mono">ext</code>.</p>
-        <pre>sto sort --by path</pre>
+      <div class="cmd">
+        <div class="cmd-head">
+          <span class="cmd-name">sto close</span>
+          <span class="cmd-flags">[ids...] [--pattern GLOB] [--saved]</span>
+        </div>
+        <p class="cmd-desc">Close tabs by view id, fnmatch glob against the file path, or every clean tab. Dirty tabs trigger ST's native save dialog; use <code class="mono">--saved</code> to skip them.</p>
+<pre><span class="p">$</span> <span class="c">sto close --pattern '*/node_modules/*'</span>
+closed /Users/you/proj/node_modules/foo.js
+closed /Users/you/proj/node_modules/bar.js
+<span class="o">2 tabs closed</span>
+
+<span class="p">$</span> <span class="c">sto close --saved</span>
+<span class="o">18 tabs closed</span></pre>
       </div>
 
-      <div class="feature">
-        <h3><span class="kbd">sto dedupe</span></h3>
-        <p>If the same file is open in multiple tabs, keeps the first and closes the rest.</p>
-        <pre>sto dedupe
-removed duplicate src/util.py
-1 duplicates removed</pre>
+      <div class="cmd">
+        <div class="cmd-head">
+          <span class="cmd-name">sto sort</span>
+          <span class="cmd-flags">[--by name|path|ext]</span>
+        </div>
+        <p class="cmd-desc">Re-order tabs in the active group. <code class="mono">path</code> groups by directory; <code class="mono">ext</code> groups by extension, then path.</p>
+<pre><span class="p">$</span> <span class="c">sto sort --by path</span>
+<span class="o">sorted 12 tabs by path</span></pre>
       </div>
 
-      <div class="feature">
-        <h3><span class="kbd">sto close</span></h3>
-        <p>Close by view id, glob pattern, or "every clean tab."</p>
-        <pre>sto close --pattern '*.log'
-sto close --saved</pre>
+      <div class="cmd">
+        <div class="cmd-head">
+          <span class="cmd-name">sto dedupe</span>
+        </div>
+        <p class="cmd-desc">If the same file path is open in multiple tabs, keeps the first seen and closes the rest.</p>
+<pre><span class="p">$</span> <span class="c">sto dedupe</span>
+removed duplicate /Users/you/proj/src/util.py
+<span class="o">1 duplicates removed</span></pre>
       </div>
+
+      <div class="cmd">
+        <div class="cmd-head">
+          <span class="cmd-name">sto group-by-folder</span>
+        </div>
+        <p class="cmd-desc">Splits tabs across new windows by project folder. Keeps tabs under the first folder in the active window; moves tabs under each other folder into their own new window.</p>
+<pre><span class="p">$</span> <span class="c">sto group-by-folder</span>
+/Users/you/proj-b -&gt; 5 tabs
+/Users/you/proj-c -&gt; 3 tabs</pre>
+      </div>
+
+      <div class="cmd">
+        <div class="cmd-head">
+          <span class="cmd-name">sto ping</span>
+        </div>
+        <p class="cmd-desc">Health check. Exits non-zero if the plugin isn't reachable.</p>
+<pre><span class="p">$</span> <span class="c">sto ping</span>
+{"pong": true, "version": "0.1.0", "windows": 2}</pre>
+      </div>
+
     </div>
   </div>
 </section>
@@ -355,7 +423,7 @@ sto close --saved</pre>
 <section id="install">
   <div class="wrap">
     <h2>install</h2>
-    <p class="lede">Clone, run one script, restart Sublime. macOS paths are the default; Linux/Windows set <code class="mono">STO_PLUGIN_DIR</code>.</p>
+    <p class="lede">One script. Restart Sublime once. Then <code class="mono">sto ping</code>.</p>
     <div class="code-card" style="max-width: 820px">
       <span class="prompt">$</span>
       <code id="install-cmd-2">git clone https://github.com/GindaChen/sublime-tab-organizer.git
@@ -364,46 +432,10 @@ cd sublime-tab-organizer
       <button class="copy" data-copy="install-cmd-2">copy</button>
     </div>
     <p class="callout">
-      <strong>After install:</strong> restart Sublime Text once so the plugin loads, then run
-      <code class="mono">sto ping</code> — expect <code class="mono">{"pong": true, "version": "0.1.0"}</code>.
+      <strong>After install:</strong> restart Sublime Text so the plugin loads. Expect
+      <code class="mono">{"pong": true, "version": "0.1.0"}</code> from <code class="mono">sto ping</code>.
+      macOS paths are the default; Linux/Windows set <code class="mono">STO_PLUGIN_DIR</code>.
     </p>
-  </div>
-</section>
-
-<section id="demo">
-  <div class="wrap">
-    <h2>a minute of tabs</h2>
-    <p class="lede">Typical flow: see what's open, dump scratch buffers, merge, sort.</p>
-    <div class="term">
-      <div class="title">
-        <span class="lights"><span></span><span></span><span></span></span>
-        <span>zsh — sublime-tab-organizer</span>
-      </div>
-<pre><span class="p">$</span> <span class="c">sto list</span>
-<span class="ok">*</span> window 3  (8 tabs)
-        14521  /Users/you/proj/src/main.py
-      ● 14522  /Users/you/proj/tests/test_main.py
-        14523  <span class="dim">[untitled]</span>
-        14524  <span class="dim">[TODO refactor]</span>
-  window 5  (4 tabs)
-        14600  /Users/you/notes/meeting.md
-
-<span class="p">$</span> <span class="c">sto dump-untitled --close-source --open-saved</span>
-<span class="ok">saved  </span> /Users/you/sublime-scratch/20260423_091204_untitled.txt
-<span class="ok">saved  </span> /Users/you/sublime-scratch/20260423_091204_todo-refactor.md
-dir: /Users/you/sublime-scratch
-<span class="o">2 new, 0 reused (content-dedup)</span>
-
-<span class="p">$</span> <span class="c">sto merge</span>
-merged 4 tabs into window 3
-
-<span class="p">$</span> <span class="c">sto sort --by path</span>
-sorted 12 tabs by path
-
-<span class="p">$</span> <span class="c">sto dedupe</span>
-removed duplicate /Users/you/proj/src/main.py
-<span class="o">1 duplicates removed</span></pre>
-    </div>
   </div>
 </section>
 
