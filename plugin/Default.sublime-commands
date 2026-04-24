@@ -1,0 +1,12 @@
+[
+    { "caption": "sto: merge all windows (include unsaved)", "command": "sto_merge", "args": { "copy_unsaved": true } },
+    { "caption": "sto: merge all windows (saved only)",     "command": "sto_merge", "args": { "copy_unsaved": false } },
+    { "caption": "sto: dedupe tabs across windows",         "command": "sto_dedupe" },
+    { "caption": "sto: sort tabs by name",                  "command": "sto_sort", "args": { "by": "name" } },
+    { "caption": "sto: sort tabs by path",                  "command": "sto_sort", "args": { "by": "path" } },
+    { "caption": "sto: sort tabs by extension",             "command": "sto_sort", "args": { "by": "ext" } },
+    { "caption": "sto: dump untitled to ~/sublime-scratch", "command": "sto_dump_untitled", "args": { "dir": "~/sublime-scratch" } },
+    { "caption": "sto: dump untitled + close + reopen",     "command": "sto_dump_untitled", "args": { "dir": "~/sublime-scratch", "close_source": true, "open_saved": true } },
+    { "caption": "sto: save all dirty tabs",                "command": "sto_save_all" },
+    { "caption": "sto: group tabs by project folder",       "command": "sto_group_by_folder" }
+]

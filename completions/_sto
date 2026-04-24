@@ -1,0 +1,62 @@
+#compdef sto
+# zsh completion for sto
+# install: put this file somewhere on $fpath (e.g. ~/.zsh/completions), then
+#   autoload -Uz compinit && compinit
+# or:  fpath=(~/.zsh/completions $fpath)
+
+_sto() {
+    local -a commands
+    commands=(
+        'list:list all windows and tabs'
+        'close:close tabs by id, glob, or saved state'
+        'merge:merge all windows into one'
+        'move:move a single tab to another window'
+        'sort:sort tabs in active group'
+        'dedupe:close duplicate file tabs'
+        'group-by-folder:split tabs by project folder'
+        'dump-untitled:save untitled tabs to a folder'
+        'find:grep across every open buffer'
+        'save-all:save every dirty tab'
+        'reload:reload tabs from disk'
+        'save:save current layout as a named session'
+        'restore:restore a named session'
+        'sessions:list or delete saved sessions'
+        'recent:recently closed tabs'
+        'pick:interactive picker (fzf)'
+        'ping:health check'
+    )
+
+    _arguments -C \
+        '1: :->cmd' \
+        '*:: :->args'
+
+    case $state in
+        cmd) _describe 'sto command' commands ;;
+        args)
+            case $words[1] in
+                list)          _arguments '--json[raw JSON]' ;;
+                close)         _arguments '--pattern[glob]:pattern' '--saved[close clean tabs]' '--dry-run[preview]' ;;
+                merge)         _arguments '--into[target window id]:id' '--copy-unsaved[migrate dirty/untitled]' '--dry-run[preview]' ;;
+                move)          _arguments '--to[target window id]:id' '--dry-run[preview]' ;;
+                sort)          _arguments '--by[key]:by:(name path ext)' ;;
+                dedupe)        _arguments '--dry-run[preview]' ;;
+                dump-untitled) _arguments '--dir[dest]:dir:_directories' '--close-source[]' '--open-saved[]' '--include-dirty[]' '--dry-run[preview]' ;;
+                find)          _arguments '--regex[]' '--case-sensitive[]' ;;
+                save-all)      _arguments '--dry-run[preview]' ;;
+                reload)        _arguments '--pattern[glob]:pattern' '--dry-run[preview]' ;;
+                save|restore)
+                    local dir="${STO_SESSIONS_DIR:-$HOME/.sto/sessions}"
+                    local -a sessions
+                    if [[ -d $dir ]]; then
+                        sessions=(${${(f)"$(cd $dir && print -l *.json(:r) 2>/dev/null)"}})
+                    fi
+                    _arguments "1:session:(${sessions})" '--close-existing[]'
+                    ;;
+                sessions)      _arguments "1:action:(list delete)" ;;
+                recent)        _arguments '--limit[n]:n' '--restore[idx]:idx' '--clear[]' ;;
+                pick)          _arguments "1:action:(close print)" ;;
+            esac
+            ;;
+    esac
+}
+_sto "$@"
